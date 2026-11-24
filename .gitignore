@@ -221,3 +221,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Frontend and local environment overrides
+node_modules/
+*.tsbuildinfo
+.env.*
+!.env.example
