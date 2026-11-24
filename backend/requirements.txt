@@ -1,2 +1,4 @@
+# python-multipart 추가
 fastapi>=0.115,<1
+python-multipart>=0.0.26,<1
 uvicorn>=0.34,<1
