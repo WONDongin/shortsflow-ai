@@ -227,3 +227,6 @@ node_modules/
 *.tsbuildinfo
 .env.*
 !.env.example
+
+# Uploaded videos and generated media
+/backend/storage/
