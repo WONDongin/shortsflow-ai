@@ -11,6 +11,7 @@ from app.routes.health import router as health_router
 from app.routes.videos import router as videos_router
 from app.services.media import VideoError
 
+# FastAPI 앱과 서버 로거 초기화
 app = FastAPI(title="ShortsFlow AI")
 logger = logging.getLogger("uvicorn.error").getChild("shortsflow")
 

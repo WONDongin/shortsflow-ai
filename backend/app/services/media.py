@@ -59,6 +59,7 @@ def mp4_input(path: Path) -> list[str]:
     return ["-protocol_whitelist", "file", "-f", "mov", "-i", str(path)]
 
 
+# 탐색 시각 보정에 쓸 컨테이너와 영상 시작 차이 계산
 def video_seek_offset(path: Path) -> float:
     # Input seeking is relative to the container start. Transcript times start at the video stream.
     output = run_media(
@@ -81,6 +82,7 @@ def video_seek_offset(path: Path) -> float:
         raise VideoError(422, "Could not align the clip with the original video timeline.") from exc
 
 
+# 자막 시각 보정에 쓸 영상과 음성 시작 차이 계산
 def audio_start_offset(path: Path) -> float:
     # WAV starts at its first audio sample. Use the same streams as the extractors.
     output = run_media(

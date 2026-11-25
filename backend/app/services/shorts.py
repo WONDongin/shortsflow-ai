@@ -1,3 +1,4 @@
+# 자막 합성 쇼츠와 썸네일 렌더링·다운로드 서비스
 from decimal import Decimal
 from os import getenv
 from pathlib import Path
@@ -12,6 +13,7 @@ from app.services import analysis_records, transcripts, videos
 from app.services.media import VideoError, mp4_input, run_media, video_seek_offset
 
 ShortsKind = Literal["shorts", "thumbnail"]
+# 쇼츠·썸네일 파일명과 응답 형식
 OUTPUTS: dict[ShortsKind, tuple[str, str]] = {
     "shorts": ("shorts.mp4", "video/mp4"),
     "thumbnail": ("thumbnail.jpg", "image/jpeg"),
@@ -21,6 +23,7 @@ CAPTIONED_FOLDER = "captioned"
 PAD_FILTER = "pad=ceil(iw/2)*2:ceil(ih/2)*2"
 
 
+# 분석 후보의 시각과 결과물 경로를 응답으로 구성
 def output_result(video: VideoResult, analysis_id: UUID, output: Path) -> ShortsResult:
     analysis = analysis_records.find_analysis(video.video_id, analysis_id)
     if analysis is None:
@@ -45,6 +48,7 @@ def output_result(video: VideoResult, analysis_id: UUID, output: Path) -> Shorts
     )
 
 
+# 영상 UUID와 분석 ID별 결과물 폴더
 def output_directory(video_id: UUID, analysis_id: UUID) -> Path:
     return videos.job_directory(video_id) / "shorts" / str(analysis_id)
 
@@ -55,6 +59,7 @@ def outputs_available(directory: Path) -> bool:
     ))
 
 
+# 자막·썸네일에 사용할 한글 글꼴 선택
 def thumbnail_font() -> Path:
     configured = getenv("THUMBNAIL_FONT_PATH")
     if configured:
@@ -73,6 +78,7 @@ def thumbnail_font() -> Path:
     raise VideoError(503, "Set THUMBNAIL_FONT_PATH to a font that supports Korean.")
 
 
+# 자막·썸네일 문구를 FFmpeg drawtext 설정으로 변환
 def caption_filter(staging: Path, filename: str, text: str) -> str:
     # Paths are generated locally. Text stays in a UTF-8 file and is rendered literally.
     caption = fill(" ".join(text.split()), width=13)
@@ -86,6 +92,7 @@ def caption_filter(staging: Path, filename: str, text: str) -> str:
     )
 
 
+# 원본 자막 시각을 클립 기준으로 변환하고 겹침 조정
 def subtitle_filters(
     staging: Path, segments: list[TranscriptSegment], start_seconds: float, end_seconds: float
 ) -> list[str]:
@@ -108,6 +115,7 @@ def subtitle_filters(
     return filters
 
 
+# 후보 구간 렌더링 후 쇼츠와 썸네일 함께 저장
 def generate_shorts(video_id: UUID, analysis_id: UUID) -> ShortsResult:
     video = videos.get_video(video_id)
     output = output_directory(video_id, analysis_id) / CAPTIONED_FOLDER
@@ -127,6 +135,7 @@ def generate_shorts(video_id: UUID, analysis_id: UUID) -> ShortsResult:
     font = thumbnail_font()
     source_offset = video_seek_offset(source)
     output.parent.mkdir(parents=True, exist_ok=True)
+    # 임시 폴더에 자막 합성 영상과 썸네일을 생성한 뒤 결과 공개
     with TemporaryDirectory(prefix=".render-", dir=output.parent) as temporary:
         staging = Path(temporary)
         rendered = staging / "rendered"
@@ -172,6 +181,7 @@ def generate_shorts(video_id: UUID, analysis_id: UUID) -> ShortsResult:
     return result
 
 
+# 생성된 자막 합성 쇼츠 또는 이전 버전 결과물 조회
 def get_shorts(video_id: UUID, analysis_id: UUID) -> ShortsResult:
     video = videos.get_video(video_id)
     legacy_output = output_directory(video_id, analysis_id)
@@ -183,6 +193,7 @@ def get_shorts(video_id: UUID, analysis_id: UUID) -> ShortsResult:
     return result
 
 
+# 요청한 쇼츠·썸네일의 파일 경로와 미디어 타입 반환
 def download_file(video_id: UUID, analysis_id: UUID | None, kind: ShortsKind) -> tuple[Path, str]:
     if analysis_id is None:
         raise VideoError(422, "analysis_id is required to download shorts or a thumbnail.")

@@ -10,6 +10,7 @@ from app.db import check_video_tables
 router = APIRouter(prefix="/api")
 
 
+# 상태 확인 응답 형식
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
 

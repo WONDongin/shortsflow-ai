@@ -29,6 +29,7 @@ class ExtractionResult(BaseModel):
     path: str
 
 
+# 쇼츠·썸네일 파일 경로와 원본 영상 기준 시각
 class ShortsResult(BaseModel):
     video_id: UUID
     analysis_id: UUID
@@ -41,6 +42,7 @@ class ShortsResult(BaseModel):
     thumbnail_path: str
 
 
+# 자막 구간의 시작·종료 시각과 텍스트
 class TranscriptSegment(BaseModel):
     start_seconds: float = Field(ge=0, allow_inf_nan=False)
     end_seconds: float = Field(gt=0, allow_inf_nan=False)

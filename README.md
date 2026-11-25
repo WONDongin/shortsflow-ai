@@ -186,12 +186,57 @@ Set-Location backend
 
 Mock 모드는 예제 자막의 두 연속 구간을 찾고 기존 분석 테이블에 후보를 저장합니다. 구간이 일치하지 않으면 `no_candidate`를 반환합니다. 실제 분석 모드로 전환하려면 `backend/.env`에서 `ANALYSIS_MOCK_MODE=false`로 바꾼 뒤 새 분석을 요청합니다.
 
-1. [Swagger](http://127.0.0.1:8000/docs)에서 `POST /api/videos/{video_id}/analyze`에 `72082fdb-be4c-4843-b36a-3ee569f9a8f4`를 입력합니다.
+1. [Swagger](http://127.0.0.1:8000/docs)에서 자막을 생성한 Mock 테스트 영상의 `video_id`로 `POST /api/videos/{video_id}/analyze`를 실행합니다.
 2. `GET /api/videos/{video_id}/analysis`에서 같은 영상 UUID와 새 `analysis_id`로 조회합니다. `succeeded`와 구간 `22.021995`~`41.521995`초를 확인합니다.
 3. `POST /api/videos/{video_id}/generate-shorts`에 두 UUID를 입력합니다. `duration_seconds`는 `19.5`, `thumbnail_timestamp_seconds`는 `25.021995`입니다. 3초 이하 후보는 썸네일에 구간의 중간 프레임을 씁니다.
 4. `GET /api/videos/{video_id}/shorts`에서 두 파일을 조회합니다. `GET /api/videos/{video_id}/download/{kind}`를 같은 UUID들로 두 번 실행합니다. `kind`는 각각 `shorts`와 `thumbnail`입니다.
 
 FFmpeg에는 `libx264` 인코더와 `drawtext` 필터가 필요합니다. 쇼츠에는 09단계 자막 중 선택 구간과 겹치는 부분을 클립 시작 기준으로 맞춰 영상에 직접 입힙니다. Windows에서는 맑은 고딕 Bold를 사용합니다. 다른 한글 글꼴을 쓰려면 서버 실행 전에 `THUMBNAIL_FONT_PATH`에 글꼴 파일 경로를 지정합니다. 자막이 들어간 새 결과는 영상별로 `shorts/<analysis_id>/captioned/` 아래에 저장됩니다. 이전에 생성한 결과도 같은 분석 ID로 3번을 다시 실행하면 자막 버전을 다운로드할 수 있습니다.
+
+## n8n 자동 편집
+
+### Windows PowerShell에서 연결
+
+1. 위의 로컬 실행 방법에 따라 Python, FFmpeg·FFprobe, PostgreSQL과 프론트엔드 의존성을 준비합니다. 기존 `shortsflow_app.videos`, `shortsflow_app.video_artifacts` 테이블이 있는 DB에 연결합니다. `backend/.env`에 `ANALYSIS_MOCK_MODE=true`를 지정하면 OpenAI API 키 없이 실행할 수 있습니다.
+2. 저장소의 `backend` 폴더에서 분석 및 워크플로우 마이그레이션을 적용합니다. 두 스크립트 모두 다시 적용할 수 있습니다.
+
+```powershell
+@'
+from pathlib import Path
+from app.db import get_engine
+
+with get_engine().begin() as connection:
+    for path in ("sql/010_video_analyses.sql", "sql/011_video_workflows.sql"):
+        connection.exec_driver_sql(Path(path).read_text(encoding="utf-8"))
+'@ | .\.venv\Scripts\python.exe -
+```
+
+3. 별도 PowerShell에서 n8n 2.x를 실행합니다. Node.js 22.17.1을 사용할 수 있습니다. [n8n npm 설치 문서](https://docs.n8n.io/deploy/host-n8n/install-options/install-with-npm.md)
+
+```powershell
+$env:N8N_LISTEN_ADDRESS = '127.0.0.1'
+$env:N8N_HOST = '127.0.0.1'
+$env:N8N_PORT = '5678'
+npx.cmd --yes n8n@2
+```
+
+4. `http://127.0.0.1:5678`에서 워크플로우를 만들고, 메뉴의 **Import from File**로 [shortsflow-workflow.json](n8n/shortsflow-workflow.json)을 가져옵니다. **Publish**를 누른 뒤 **ShortsFlow webhook** 노드에서 Production URL을 확인합니다.
+5. 기본 주소는 FastAPI `http://127.0.0.1:8000`, n8n 웹훅 `http://127.0.0.1:5678/webhook/shortsflow`입니다. 포트나 호스트를 변경했다면 n8n의 **FastAPI URL** 노드에서 `base_url`을 바꾸고 다시 게시합니다. FastAPI가 호출할 웹훅은 `backend/.env`의 `N8N_WEBHOOK_URL`로 지정합니다. 프론트엔드가 호출할 FastAPI 주소는 `VITE_API_BASE_URL`로 설정합니다.
+6. FastAPI와 Vite를 시작하고 `http://127.0.0.1:5173`을 엽니다. MP4를 선택하고 **업로드**를 한 번 클릭합니다. **영상 편집 완료!** 팝업을 닫은 다음 **편집 영상 다운로드**를 클릭합니다. 실패하거나 후보가 없으면 팝업에서 원인을 확인할 수 있습니다.
+
+업로드 응답의 `video_id`로 `POST /api/videos/{video_id}/workflow`를 호출하면 FastAPI가 n8n에 작업을 전달합니다. 동일 영상의 시작 요청을 반복하면 기존 작업 상태를 반환합니다. React는 `GET /api/videos/{video_id}/workflow`의 `stage`, `analysis_id`, `error`를 읽어 진행과 결과를 표시합니다. n8n은 분석이 대기 중이거나 실행 중이면 2초 간격으로 같은 분석을 조회합니다. Whisper 요청 제한은 25분이며, 쇼츠 요청 제한은 FFprobe·FFmpeg의 처리 제한 합계를 고려해 5분으로 설정했습니다.
+
+### Mock 테스트 MP4
+
+PR #5에서 사용한 원본 MP4로 검증합니다. 기존 로컬 작업에 원본이 있으면 해당 폴더의 `source.mp4`를 업로드 파일로 선택합니다. Mock 분석은 자막의 두 연속 구간이 `22.021995–36.021995초`의 “그냥 네가 보고 싶다 보고 싶다 보고 싶다”와 `36.021995–41.521995초`의 “참 많이 보고 싶다”에 일치할 때 후보를 반환합니다. 이 원본을 기본 `small` 모델로 전사하면 자막 경계가 달라져 `no_candidate`가 표시될 수 있습니다.
+
+이 원본의 Mock 후보에 일치하는 자막을 생성하려면 백엔드를 시작할 PowerShell에서 `$env:WHISPER_MODEL = 'medium'`을 지정한 뒤 Uvicorn을 실행합니다. `medium`이 캐시되어 있으면 모델 이름이나 해당 모델 디렉터리의 경로를 지정할 수 있습니다.
+
+다운로드한 `shorts.mp4`를 재생해 원본 음성과 화면에 합성된 자막을 확인합니다. 아래 명령으로 영상 길이와 오디오 스트림도 확인할 수 있습니다. 예상 길이는 약 19.5초입니다.
+
+```powershell
+ffprobe -v error -show_entries 'format=duration:stream=codec_type,codec_name' -of json .\shorts.mp4
+```
 
 <!-- 영상 처리 테스트와 DBeaver 저장 확인 -->
 ### 로컬에서 영상 연동 확인

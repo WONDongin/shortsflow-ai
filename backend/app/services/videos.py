@@ -33,7 +33,7 @@ def artifact_path(video_id: UUID, filename: str) -> str:
     return f"{video_id}/{filename}"
 
 
-# MP4 저장 후 분석 결과를 PostgreSQL에 기록
+# 원본 MP4 저장 후 영상 메타데이터를 PostgreSQL에 기록
 def store_upload(
     file: BinaryIO, filename: str | None, known_size: int | None = None
 ) -> VideoResult:
