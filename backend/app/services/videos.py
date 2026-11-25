@@ -19,6 +19,7 @@ DOWNLOADS = {
     "source": ("source.mp4", "video/mp4"),
     "audio": ("audio.wav", "audio/wav"),
     "frame": ("frame.jpg", "image/jpeg"),
+    "transcript": ("transcript.json", "application/json"),
 }
 
 
@@ -88,6 +89,9 @@ def get_video(video_id: UUID) -> VideoResult:
             result.audio_path = artifact_path(video_id, "audio.wav")
         if result.frame_path is None and (directory / "frame.jpg").is_file():
             result.frame_path = artifact_path(video_id, "frame.jpg")
+    transcript_filename = DOWNLOADS["transcript"][0]
+    if (directory / transcript_filename).is_file():
+        result.transcript_path = artifact_path(video_id, transcript_filename)
     return result
 
 

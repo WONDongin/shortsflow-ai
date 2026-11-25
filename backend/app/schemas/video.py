@@ -20,9 +20,22 @@ class VideoResult(BaseModel):
     metadata: VideoMetadata
     audio_path: str | None = None
     frame_path: str | None = None
+    transcript_path: str | None = None
 
 
 # 추출 응답에 사용할 영상 UUID와 결과물 상대 경로
 class ExtractionResult(BaseModel):
     video_id: UUID
     path: str
+
+
+class TranscriptSegment(BaseModel):
+    start_seconds: float = Field(ge=0, allow_inf_nan=False)
+    end_seconds: float = Field(gt=0, allow_inf_nan=False)
+    text: str
+
+
+class Transcript(BaseModel):
+    video_id: UUID
+    language: str
+    segments: list[TranscriptSegment]

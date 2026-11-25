@@ -23,6 +23,13 @@ type Video = {
   }
   audio_path: string | null
   frame_path: string | null
+  transcript_path: string | null
+}
+
+type Transcript = {
+  video_id: string
+  language: string
+  segments: { start_seconds: number; end_seconds: number; text: string }[]
 }
 
 const videosUrl = `${apiBaseUrl}/api/videos`
@@ -30,7 +37,10 @@ const downloads = {
   source: { label: '원본 MP4', filename: 'source.mp4' },
   audio: { label: '음성 WAV', filename: 'audio.wav' },
   frame: { label: '프레임 JPG', filename: 'frame.jpg' },
+  transcript: { label: '자막 JSON', filename: 'transcript.json' },
 }
+
+const segmentTime = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 6 })
 
 // API 요청 및 실패 응답 메시지 처리
 async function request(url: string, init?: RequestInit) {
@@ -51,11 +61,18 @@ function videoUrl(videoId: string) {
   return `${videosUrl}/${encodeURIComponent(videoId)}`
 }
 
+async function loadTranscript(video: Video, signal?: AbortSignal): Promise<Transcript | null> {
+  if (!video.transcript_path) return null
+  const response = await request(`${videoUrl(video.video_id)}/transcript`, { signal })
+  return response.json()
+}
+
 function App() {
   const [status, setStatus] = useState<keyof typeof statusLabels>('checking')
   const [initialId] = useState(() => new URLSearchParams(window.location.search).get('video') || '')
   const [lookupId, setLookupId] = useState(initialId)
   const [video, setVideo] = useState<Video | null>(null)
+  const [transcript, setTranscript] = useState<Transcript | null>(null)
   const [busy, setBusy] = useState(initialId ? '영상 조회' : '')
   const [error, setError] = useState('')
 
@@ -68,6 +85,8 @@ function App() {
         const response = await request(videoUrl(initialId), { signal: controller.signal })
         const result: Video = await response.json()
         if (!controller.signal.aborted) setVideo(result)
+        const savedTranscript = await loadTranscript(result, controller.signal)
+        if (!controller.signal.aborted) setTranscript(savedTranscript)
       } catch (error) {
         if (!controller.signal.aborted) setError(`영상 조회 실패 · ${errorMessage(error)}`)
       } finally {
@@ -102,6 +121,7 @@ function App() {
   // 선택한 영상 표시 및 URL에 UUID 저장
   function selectVideo(result: Video) {
     setVideo(result)
+    setTranscript(null)
     setLookupId(result.video_id)
     const url = new URL(window.location.href)
     url.searchParams.set('video', result.video_id)
@@ -136,7 +156,9 @@ function App() {
     event.preventDefault()
     void run('영상 조회', async () => {
       const response = await request(videoUrl(lookupId.trim()))
-      selectVideo(await response.json())
+      const result: Video = await response.json()
+      selectVideo(result)
+      setTranscript(await loadTranscript(result))
     })
   }
 
@@ -148,6 +170,13 @@ function App() {
       const response = await request(`${videoUrl(current.video_id)}/extract-${kind}${query}`, { method: 'POST' })
       const result: { path: string } = await response.json()
       setVideo({ ...current, [field]: result.path })
+    })
+  }
+
+  function transcribe(current: Video) {
+    void run('자막 생성', async () => {
+      const response = await request(`${videoUrl(current.video_id)}/transcribe`, { method: 'POST' })
+      setTranscript(await response.json())
     })
   }
 
@@ -212,6 +241,8 @@ function App() {
           <div className="controls">
             <button type="button" disabled={!!busy || !video.metadata.has_audio} onClick={() => extract(video, 'audio')}>음성 추출</button>
             <button type="button" disabled={!!busy || !video.audio_path} onClick={() => download(video, 'audio')}>WAV 다운로드</button>
+            <button type="button" disabled={!!busy || !video.audio_path} onClick={() => transcribe(video)}>자막 생성</button>
+            <button type="button" disabled={!!busy || (!transcript && !video.transcript_path)} onClick={() => download(video, 'transcript')}>자막 JSON 다운로드</button>
           </div>
           <form onSubmit={(event) => {
             event.preventDefault()
@@ -225,6 +256,28 @@ function App() {
               <button type="button" disabled={!!busy || !video.frame_path} onClick={() => download(video, 'frame')}>JPG 다운로드</button>
             </div>
           </form>
+          {transcript && (
+            <>
+              <h2>자막</h2>
+              <p>감지 언어 {transcript.language}</p>
+              {transcript.segments.length > 0 ? (
+                <table className="transcript">
+                  <thead>
+                    <tr><th scope="col">시작 (초)</th><th scope="col">종료 (초)</th><th scope="col">대사</th></tr>
+                  </thead>
+                  <tbody>
+                    {transcript.segments.map((segment, index) => (
+                      <tr key={index}>
+                        <td>{segmentTime.format(segment.start_seconds)}</td>
+                        <td>{segmentTime.format(segment.end_seconds)}</td>
+                        <td>{segment.text}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : <p>감지된 대사가 없습니다.</p>}
+            </>
+          )}
         </section>
       )}
     </main>
