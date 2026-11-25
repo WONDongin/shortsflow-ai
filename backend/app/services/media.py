@@ -3,6 +3,7 @@ import json
 import logging
 import subprocess
 from fractions import Fraction
+from math import isfinite
 from os import getenv
 from pathlib import Path
 
@@ -52,6 +53,32 @@ def run_media(
 # 입력 형식을 MOV 계열로 고정하고 로컬 파일만 허용
 def mp4_input(path: Path) -> list[str]:
     return ["-protocol_whitelist", "file", "-f", "mov", "-i", str(path)]
+
+
+def audio_start_offset(path: Path) -> float:
+    # WAV starts at its first audio sample. Use the same streams as the extractors.
+    output = run_media(
+        "ffprobe",
+        [
+            "-v", "error", *mp4_input(path), "-show_entries",
+            "stream=codec_type,start_time:stream_disposition=attached_pic", "-of", "json",
+        ],
+        timeout=30,
+    )
+    try:
+        streams = json.loads(output)["streams"]
+        audio = next(stream for stream in streams if stream.get("codec_type") == "audio")
+        video = next(
+            stream for stream in streams
+            if stream.get("codec_type") == "video"
+            and not stream.get("disposition", {}).get("attached_pic")
+        )
+        offset = float(audio["start_time"]) - float(video["start_time"])
+        if not isfinite(offset):
+            raise ValueError("Non-finite stream start time")
+        return offset
+    except (KeyError, StopIteration, TypeError, ValueError) as exc:
+        raise VideoError(422, "Could not align the WAV with the original video timeline.") from exc
 
 
 # FFprobe JSON 응답에서 MP4 형식과 영상·음성 스트림 정보 확인

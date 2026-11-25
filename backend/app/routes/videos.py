@@ -2,11 +2,11 @@
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, File, Query, UploadFile
+from fastapi import APIRouter, File, Query, Response, UploadFile
 from fastapi.responses import FileResponse
 
-from app.schemas.video import ExtractionResult, VideoResult
-from app.services import videos
+from app.schemas.video import ExtractionResult, Transcript, VideoResult
+from app.services import transcripts, videos
 
 router = APIRouter(prefix="/api/videos", tags=["videos"])
 
@@ -38,10 +38,15 @@ def read_video(video_id: UUID) -> VideoResult:
     response_class=FileResponse,
     responses={404: {"description": "Video file not found"}},
 )
-def download_video(video_id: UUID, kind: Literal["source", "audio", "frame"]) -> FileResponse:
+def download_video(video_id: UUID, kind: Literal["source", "audio", "frame", "transcript"]) -> Response:
     path, media_type = videos.download_file(video_id, kind)
+    headers = {"Cache-Control": "no-store"}
+    if kind == "transcript":
+        # Read one snapshot so a simultaneous replacement cannot change the response length.
+        headers["Content-Disposition"] = 'attachment; filename="transcript.json"'
+        return Response(path.read_bytes(), media_type=media_type, headers=headers)
     return FileResponse(
-        path, media_type=media_type, filename=path.name, headers={"Cache-Control": "no-store"}
+        path, media_type=media_type, filename=path.name, headers=headers
     )
 
 
@@ -49,6 +54,24 @@ def download_video(video_id: UUID, kind: Literal["source", "audio", "frame"]) ->
 @router.post("/{video_id}/extract-audio", responses={404: {"description": "Video job not found"}})
 def extract_audio(video_id: UUID) -> ExtractionResult:
     return videos.extract_audio(video_id)
+
+
+@router.post(
+    "/{video_id}/transcribe",
+    responses={
+        404: {"description": "Video job or original file not found"},
+        409: {"description": "WAV audio has not been extracted"},
+        503: {"description": "Whisper model, media tool, or video database unavailable"},
+    },
+)
+def transcribe_video(video_id: UUID) -> Transcript:
+    return transcripts.transcribe_video(video_id)
+
+
+@router.get("/{video_id}/transcript", responses={404: {"description": "Video job or transcript not found"}})
+def read_transcript(video_id: UUID, response: Response) -> Transcript:
+    response.headers["Cache-Control"] = "no-store"
+    return transcripts.get_transcript(video_id)
 
 
 # 지정한 시점의 프레임을 JPG로 추출

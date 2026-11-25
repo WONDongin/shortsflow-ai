@@ -66,3 +66,18 @@ dl {
 dd { margin: 0; overflow-wrap: anywhere; }
 /* 오류 메시지 색상 */
 [role="alert"] { color: #9a2434; }
+
+.transcript {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.transcript th, .transcript td {
+  padding: .5rem;
+  border-bottom: 1px solid #cad8dc;
+  vertical-align: top;
+}
+
+.transcript th { white-space: nowrap; }
+.transcript td:last-child { overflow-wrap: anywhere; }
