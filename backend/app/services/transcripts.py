@@ -1,3 +1,4 @@
+# Whisper 음성 인식과 자막 JSON 저장·조회 서비스
 import logging
 from os import getenv
 from pathlib import Path
@@ -19,6 +20,7 @@ _model: "WhisperModel | None" = None
 _model_lock = Lock()
 
 
+# 첫 요청에서 Whisper 모델을 로드하고 이후 재사용
 def get_model() -> "WhisperModel":
     global _model
     with _model_lock:
@@ -34,6 +36,7 @@ def get_model() -> "WhisperModel":
         return _model
 
 
+# 음성을 전사하고 구간 시각을 원본 영상 기준으로 보정
 def recognize_audio(
     model: "WhisperModel", video_id: UUID, audio: Path, offset: float, *, vad_filter: bool
 ) -> Transcript:
@@ -48,6 +51,7 @@ def recognize_audio(
     return Transcript(video_id=video_id, language=info.language, segments=aligned_segments)
 
 
+# WAV 확인 후 전사하고 영상 폴더에 자막 저장
 def transcribe_video(video_id: UUID) -> Transcript:
     video = videos.get_video(video_id)
     directory = videos.job_directory(video_id)
@@ -75,6 +79,7 @@ def transcribe_video(video_id: UUID) -> Transcript:
     return transcript
 
 
+# 임시 파일 작성 후 자막 JSON을 한 번에 교체
 def save_transcript(target: Path, transcript: Transcript) -> None:
     pending = target.with_name(f".{uuid4()}.json")
     try:
@@ -87,6 +92,7 @@ def save_transcript(target: Path, transcript: Transcript) -> None:
             logger.warning("Could not remove temporary transcript %s", pending, exc_info=True)
 
 
+# 저장된 자막 JSON을 읽고 응답 구조 검증
 def get_transcript(video_id: UUID) -> Transcript:
     path, _ = videos.download_file(video_id, "transcript")
     try:

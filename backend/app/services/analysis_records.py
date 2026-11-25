@@ -1,3 +1,4 @@
+# PostgreSQL 자막 분석 작업 등록·조회·상태 갱신
 from uuid import UUID, uuid4
 
 from sqlalchemy import bindparam, text
@@ -13,6 +14,7 @@ RESULT_COLUMNS = "id AS analysis_id, video_id, status, candidate, error, created
 INTERRUPTED = AnalysisIssue(code="interrupted", message="The analysis did not finish within 10 minutes. Request a new analysis.")
 
 
+# 시간 초과된 대기·실행 분석을 실패로 기록
 def expire_active(connection: Connection, video_id: UUID) -> None:
     connection.execute(
         text("""
@@ -25,6 +27,7 @@ def expire_active(connection: Connection, video_id: UUID) -> None:
     )
 
 
+# 진행 중인 분석 재사용 또는 새 분석 등록
 def request_analysis(video: VideoResult) -> tuple[AnalysisResult, bool]:
     video_id = video.video_id
     params = {"video_id": video_id}
@@ -57,6 +60,7 @@ def request_analysis(video: VideoResult) -> tuple[AnalysisResult, bool]:
         return AnalysisResult.model_validate(row), True
 
 
+# 영상별 최신 분석 또는 지정한 분석 조회
 def find_analysis(video_id: UUID, analysis_id: UUID | None) -> AnalysisResult | None:
     by_id = "AND id = :id" if analysis_id is not None else ""
     with get_engine().begin() as connection:
@@ -72,6 +76,7 @@ def find_analysis(video_id: UUID, analysis_id: UUID | None) -> AnalysisResult | 
     return AnalysisResult.model_validate(row) if row is not None else None
 
 
+# 대기 중인 분석을 실행 상태로 전환
 def start_analysis(analysis_id: UUID) -> bool:
     with get_engine().begin() as connection:
         row = connection.execute(
@@ -87,6 +92,7 @@ def start_analysis(analysis_id: UUID) -> bool:
     return row is not None
 
 
+# 후보 유무와 오류에 따른 분석 종료 상태 저장
 def finish_analysis(
     analysis_id: UUID, candidate: ShortsCandidate | None, error: AnalysisIssue | None
 ) -> None:

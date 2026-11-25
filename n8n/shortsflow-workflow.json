@@ -1,0 +1,656 @@
+{
+  "id": "ShortsFlowAutoV1",
+  "name": "ShortsFlow AI - MP4 to Shorts",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "shortsflow",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "3a330009-bfc2-437e-9dbe-8373302d9313",
+      "name": "ShortsFlow webhook",
+      "webhookId": "42ae6655-4bde-4f79-9928-ddd00bb283cf"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "868a3d0f-bcb7-4b95-ad16-d52c491901e2",
+              "name": "base_url",
+              "value": "http://127.0.0.1:8000",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "id": "fe7d0ab4-c961-44fe-991b-a9b823552daa",
+      "name": "FastAPI URL"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('FastAPI URL').first().json.base_url.replace(/\\/+$/, '') }}/api/videos/{{ encodeURIComponent($('ShortsFlow webhook').first().json.body.video_id) }}/workflow/progress",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Workflow-Token",
+              "value": "={{ $('ShortsFlow webhook').first().json.body.callback_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { stage: 'extracting' } }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "id": "20a4c248-b461-4d39-89e5-f06cbe749e88",
+      "name": "Start audio extraction"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('FastAPI URL').first().json.base_url.replace(/\\/+$/, '') }}/api/videos/{{ encodeURIComponent($('ShortsFlow webhook').first().json.body.video_id) }}/extract-audio",
+        "options": {
+          "timeout": 200000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        0
+      ],
+      "id": "681f5732-3579-4cfa-baa5-cd42a95cbb03",
+      "name": "Extract WAV",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('FastAPI URL').first().json.base_url.replace(/\\/+$/, '') }}/api/videos/{{ encodeURIComponent($('ShortsFlow webhook').first().json.body.video_id) }}/workflow/progress",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Workflow-Token",
+              "value": "={{ $('ShortsFlow webhook').first().json.body.callback_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { stage: 'transcribing' } }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        0
+      ],
+      "id": "471a2147-82d0-47f4-b755-8ee0f750d7d9",
+      "name": "Start transcription",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('FastAPI URL').first().json.base_url.replace(/\\/+$/, '') }}/api/videos/{{ encodeURIComponent($('ShortsFlow webhook').first().json.body.video_id) }}/transcribe",
+        "options": {
+          "timeout": 1500000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        0
+      ],
+      "id": "6fcf7d12-ce0f-4bbc-983b-74f1e71a34f9",
+      "name": "Transcribe with Whisper",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('FastAPI URL').first().json.base_url.replace(/\\/+$/, '') }}/api/videos/{{ encodeURIComponent($('ShortsFlow webhook').first().json.body.video_id) }}/workflow/progress",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Workflow-Token",
+              "value": "={{ $('ShortsFlow webhook').first().json.body.callback_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { stage: 'analyzing' } }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        0
+      ],
+      "id": "73813b65-e488-4146-a6d6-8090ca48d6d9",
+      "name": "Start analysis",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('FastAPI URL').first().json.base_url.replace(/\\/+$/, '') }}/api/videos/{{ encodeURIComponent($('ShortsFlow webhook').first().json.body.video_id) }}/analyze",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        0
+      ],
+      "id": "f52910ed-3d7c-4303-a9dc-8be3712e761d",
+      "name": "Request analysis",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $('FastAPI URL').first().json.base_url.replace(/\\/+$/, '') }}/api/videos/{{ encodeURIComponent($('ShortsFlow webhook').first().json.body.video_id) }}/analysis?analysis_id={{ $('Request analysis').first().json.analysis_id }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        0
+      ],
+      "id": "3f7766d8-17c6-483e-875d-fe03cb5cd982",
+      "name": "Read analysis",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "01d75a67-adf3-48b8-a49d-d3171bc9004c",
+              "leftValue": "={{ ['queued', 'running'].includes($json.status) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1980,
+        0
+      ],
+      "id": "7f3db66f-22d9-4c0a-a097-dee3b76c4d2b",
+      "name": "Analysis pending?"
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 2,
+        "unit": "seconds"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1980,
+        -230
+      ],
+      "id": "48686fc5-2853-494b-b423-cd91d6961568",
+      "name": "Wait 2 seconds",
+      "webhookId": "59cf3521-bde0-41cd-9a6b-db329bbe436e"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "1319cb10-af20-4ab2-94ac-8aaefbbba7ab",
+              "leftValue": "={{ $json.status === 'succeeded' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2200,
+        20
+      ],
+      "id": "eb8b5119-0e29-4646-81fb-4f66043e932a",
+      "name": "Analysis succeeded?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('FastAPI URL').first().json.base_url.replace(/\\/+$/, '') }}/api/videos/{{ encodeURIComponent($('ShortsFlow webhook').first().json.body.video_id) }}/workflow/progress",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Workflow-Token",
+              "value": "={{ $('ShortsFlow webhook').first().json.body.callback_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { stage: 'rendering', analysis_id: $json.analysis_id } }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2420,
+        0
+      ],
+      "id": "e880af63-d967-4723-ace7-942e522166b1",
+      "name": "Start rendering",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('FastAPI URL').first().json.base_url.replace(/\\/+$/, '') }}/api/videos/{{ encodeURIComponent($('ShortsFlow webhook').first().json.body.video_id) }}/generate-shorts?analysis_id={{ $json.analysis_id }}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2640,
+        0
+      ],
+      "id": "f3e1ba8c-a0ca-47c6-9767-905606b4e18e",
+      "name": "Generate shorts",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('FastAPI URL').first().json.base_url.replace(/\\/+$/, '') }}/api/videos/{{ encodeURIComponent($('ShortsFlow webhook').first().json.body.video_id) }}/workflow/progress",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Workflow-Token",
+              "value": "={{ $('ShortsFlow webhook').first().json.body.callback_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { stage: 'completed', analysis_id: $json.analysis_id } }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2860,
+        0
+      ],
+      "id": "33d6d07f-c386-44c9-b138-362ea98e778a",
+      "name": "Finish rendering"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('FastAPI URL').first().json.base_url.replace(/\\/+$/, '') }}/api/videos/{{ encodeURIComponent($('ShortsFlow webhook').first().json.body.video_id) }}/workflow/progress",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Workflow-Token",
+              "value": "={{ $('ShortsFlow webhook').first().json.body.callback_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { stage: $json.status === 'no_candidate' ? 'no_candidate' : 'failed', analysis_id: $json.analysis_id, error: $json.status === 'no_candidate' ? '쇼츠로 만들 수 있는 구간을 찾지 못했습니다.' : ($json.error?.message || '분석 결과를 확인할 수 없습니다.') } }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2420,
+        230
+      ],
+      "id": "a0ce530b-9edf-415a-84e2-1b5371015e95",
+      "name": "Report analysis outcome"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('FastAPI URL').first().json.base_url.replace(/\\/+$/, '') }}/api/videos/{{ encodeURIComponent($('ShortsFlow webhook').first().json.body.video_id) }}/workflow/progress",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Workflow-Token",
+              "value": "={{ $('ShortsFlow webhook').first().json.body.callback_token }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { stage: 'failed', analysis_id: $json.analysis_id, error: String($json.error?.response?.data?.detail || $json.error?.error?.detail || $json.error?.description || $json.error?.message || (typeof $json.error === 'string' ? $json.error : '') || 'FastAPI 요청에 실패했습니다.').slice(0, 2000) } }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2860,
+        450
+      ],
+      "id": "0d6d671c-955e-43bb-8a41-8867bf844285",
+      "name": "Report API error"
+    }
+  ],
+  "connections": {
+    "ShortsFlow webhook": {
+      "main": [
+        [
+          {
+            "node": "FastAPI URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FastAPI URL": {
+      "main": [
+        [
+          {
+            "node": "Start audio extraction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start audio extraction": {
+      "main": [
+        [
+          {
+            "node": "Extract WAV",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract WAV": {
+      "main": [
+        [
+          {
+            "node": "Start transcription",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report API error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start transcription": {
+      "main": [
+        [
+          {
+            "node": "Transcribe with Whisper",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report API error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transcribe with Whisper": {
+      "main": [
+        [
+          {
+            "node": "Start analysis",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report API error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start analysis": {
+      "main": [
+        [
+          {
+            "node": "Request analysis",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report API error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request analysis": {
+      "main": [
+        [
+          {
+            "node": "Read analysis",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report API error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read analysis": {
+      "main": [
+        [
+          {
+            "node": "Analysis pending?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report API error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start rendering": {
+      "main": [
+        [
+          {
+            "node": "Generate shorts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report API error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate shorts": {
+      "main": [
+        [
+          {
+            "node": "Finish rendering",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report API error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analysis pending?": {
+      "main": [
+        [
+          {
+            "node": "Wait 2 seconds",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Analysis succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 2 seconds": {
+      "main": [
+        [
+          {
+            "node": "Read analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analysis succeeded?": {
+      "main": [
+        [
+          {
+            "node": "Start rendering",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Report analysis outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

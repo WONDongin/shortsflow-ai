@@ -1,13 +1,14 @@
-# MP4 업로드·조회·추출·다운로드 라우터
+# 영상 업로드·추출·분석·워크플로우·다운로드 API 라우터
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, File, Query, Response, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Header, Query, Response, UploadFile
 from fastapi.responses import FileResponse
 
 from app.schemas.analysis import AnalysisResult
 from app.schemas.video import ExtractionResult, ShortsResult, Transcript, VideoResult
-from app.services import analysis_records, content_analysis, shorts, transcripts, videos
+from app.schemas.workflow import WorkflowStatus, WorkflowUpdate
+from app.services import analysis_records, content_analysis, shorts, transcripts, videos, workflows
 from app.services.media import VideoError
 
 router = APIRouter(prefix="/api/videos", tags=["videos"])
@@ -32,6 +33,27 @@ def upload_video(
 @router.get("/{video_id}", responses={404: {"description": "Video job not found"}})
 def read_video(video_id: UUID) -> VideoResult:
     return videos.get_video(video_id)
+
+
+# 영상 UUID로 n8n 자동 편집 시작
+@router.post("/{video_id}/workflow", status_code=202)
+def start_workflow(video_id: UUID) -> WorkflowStatus:
+    return workflows.start_workflow(video_id)
+
+
+# 영상 UUID로 워크플로우 단계와 최종 분석 ID 조회
+@router.get("/{video_id}/workflow")
+def read_workflow(video_id: UUID, response: Response) -> WorkflowStatus:
+    response.headers["Cache-Control"] = "no-store"
+    return workflows.read_workflow(video_id)
+
+
+# n8n 콜백으로 워크플로우 진행 상태 갱신
+@router.post("/{video_id}/workflow/progress", include_in_schema=False)
+def update_workflow(
+    video_id: UUID, update: WorkflowUpdate, x_workflow_token: Annotated[UUID, Header()]
+) -> WorkflowStatus:
+    return workflows.update_workflow(video_id, x_workflow_token, update)
 
 
 # 파일 첨부 응답, 파일이 없으면 HTTP 404
@@ -65,6 +87,7 @@ def extract_audio(video_id: UUID) -> ExtractionResult:
     return videos.extract_audio(video_id)
 
 
+# 추출된 WAV를 Whisper로 전사
 @router.post(
     "/{video_id}/transcribe",
     responses={
@@ -77,12 +100,14 @@ def transcribe_video(video_id: UUID) -> Transcript:
     return transcripts.transcribe_video(video_id)
 
 
+# 저장된 자막 JSON 조회
 @router.get("/{video_id}/transcript", responses={404: {"description": "Video job or transcript not found"}})
 def read_transcript(video_id: UUID, response: Response) -> Transcript:
     response.headers["Cache-Control"] = "no-store"
     return transcripts.get_transcript(video_id)
 
 
+# 분석 작업 등록 및 백그라운드 실행
 @router.post(
     "/{video_id}/analyze",
     status_code=202,
@@ -99,6 +124,7 @@ def analyze_video(video_id: UUID, background_tasks: BackgroundTasks, response: R
     return analysis
 
 
+# 지정한 분석 또는 최신 분석의 상태와 결과 조회
 @router.get(
     "/{video_id}/analysis",
     responses={404: {"description": "Analysis job not found"}, 503: {"description": "Video database unavailable"}},
@@ -111,6 +137,7 @@ def read_analysis(video_id: UUID, response: Response, analysis_id: UUID | None =
     return analysis
 
 
+# 분석 후보로 쇼츠와 썸네일 생성
 @router.post(
     "/{video_id}/generate-shorts",
     responses={
@@ -124,6 +151,7 @@ def generate_shorts(video_id: UUID, analysis_id: UUID) -> ShortsResult:
     return shorts.generate_shorts(video_id, analysis_id)
 
 
+# 분석 ID별로 생성된 쇼츠와 썸네일 정보 조회
 @router.get(
     "/{video_id}/shorts",
     responses={

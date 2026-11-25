@@ -1,3 +1,4 @@
+# 저장 자막 기반 Mock·GPT 쇼츠 구간 분석 서비스
 import json
 import logging
 from decimal import Decimal
@@ -17,29 +18,34 @@ from app.schemas.analysis import (
 from app.services import analysis_records, videos
 
 logger = logging.getLogger(__name__)
+# 쇼츠 길이 제한과 GPT 분석 요청 기본값
 MIN_SECONDS = 15
 MAX_SECONDS = 30
 MAX_INPUT_BYTES = 100_000
 DEFAULT_MODEL = "gpt-5.4-mini"
 RESPONSES_URL = "https://api.openai.com/v1/responses"
+# Mock 분석이 후보로 선택하는 연속 자막 구간
 MOCK_SEGMENTS = (
     (22.021995, 36.021995, "그냥 네가 보고 싶다 보고 싶다 보고 싶다"),
     (36.021995, 41.521995, "참 많이 보고 싶다"),
 )
 
 
+# 분석 실패 코드와 메시지를 담는 예외
 class AnalysisFailure(Exception):
     def __init__(self, code: FailureCode, message: str) -> None:
         super().__init__(message)
         self.issue = AnalysisIssue(code=code, message=message)
 
 
+# 원본 영상 길이에 따른 후보 길이 범위
 def candidate_length_bounds(video_duration: float) -> tuple[int, float]:
     if video_duration < MAX_SECONDS:
         return 0, video_duration
     return MIN_SECONDS, MAX_SECONDS
 
 
+# 저장 자막 검증과 구간 ID 정리
 def load_segments(video_id: UUID) -> dict[int, SavedAnalysisSegment]:
     filename = videos.DOWNLOADS["transcript"][0]
     path = videos.job_directory(video_id) / filename
@@ -70,6 +76,7 @@ def load_segments(video_id: UUID) -> dict[int, SavedAnalysisSegment]:
     return segments
 
 
+# Mock 조건에 일치하는 연속 구간 선택
 def select_mock_content(segments: dict[int, SavedAnalysisSegment]) -> SegmentSelection | None:
     ordered = list(segments.items())
     for (first_id, first), (last_id, last) in zip(ordered, ordered[1:]):
@@ -88,6 +95,7 @@ def select_mock_content(segments: dict[int, SavedAnalysisSegment]) -> SegmentSel
     return None
 
 
+# 설정에 따라 Mock 분석 또는 GPT 구조화 응답 요청
 def select_content(
     segments: dict[int, SavedAnalysisSegment], video_duration: float
 ) -> SegmentSelection | None:
@@ -183,6 +191,7 @@ def select_content(
         raise AnalysisFailure("api_error", "OpenAI returned an invalid analysis response.") from exc
 
 
+# 선택한 구간 ID·시각·길이·문구 검증
 def validate_candidate(
     selection: SegmentSelection, segments: dict[int, SavedAnalysisSegment], video_duration: float
 ) -> ShortsCandidate:
@@ -219,6 +228,7 @@ def validate_candidate(
     })
 
 
+# 백그라운드 분석 실행과 종료 상태 저장
 def run_analysis(analysis_id: UUID, video_id: UUID, video_duration: float) -> None:
     try:
         if not analysis_records.start_analysis(analysis_id):
