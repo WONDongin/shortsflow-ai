@@ -21,9 +21,12 @@ class VideoError(Exception):
 
 # 실행 경로와 제한 시간을 적용해 미디어 도구 실행
 def run_media(
-    tool: str, arguments: list[str], *, timeout: int, invalid_upload: bool = False
+    tool: str, arguments: list[str], *, timeout: int, invalid_upload: bool = False,
+    cwd: Path | None = None,
 ) -> str:
     executable = getenv(f"{tool.upper()}_PATH") or tool
+    if cwd is not None and Path(executable).is_file():
+        executable = str(Path(executable).resolve())
     try:
         result = subprocess.run(
             [executable, *arguments],
@@ -33,6 +36,7 @@ def run_media(
             encoding="utf-8",
             errors="replace",
             timeout=timeout,
+            cwd=cwd,
             check=True,
         )
     # 실행 불가·시간 초과·처리 실패를 API 오류로 변환
@@ -53,6 +57,28 @@ def run_media(
 # 입력 형식을 MOV 계열로 고정하고 로컬 파일만 허용
 def mp4_input(path: Path) -> list[str]:
     return ["-protocol_whitelist", "file", "-f", "mov", "-i", str(path)]
+
+
+def video_seek_offset(path: Path) -> float:
+    # Input seeking is relative to the container start. Transcript times start at the video stream.
+    output = run_media(
+        "ffprobe",
+        [
+            "-v", "error", *mp4_input(path), "-select_streams", "V:0",
+            "-show_entries", "format=start_time:stream=start_time", "-of", "json",
+        ],
+        timeout=30,
+    )
+    try:
+        data = json.loads(output)
+        stream = data["streams"][0]
+        container_start = float(data["format"].get("start_time", 0))
+        offset = float(stream.get("start_time", container_start)) - container_start
+        if not isfinite(offset):
+            raise ValueError("Non-finite video offset")
+        return offset
+    except (IndexError, KeyError, TypeError, ValueError) as exc:
+        raise VideoError(422, "Could not align the clip with the original video timeline.") from exc
 
 
 def audio_start_offset(path: Path) -> float:
