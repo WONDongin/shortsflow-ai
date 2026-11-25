@@ -1,3 +1,4 @@
+# FFmpeg·FFprobe 실행과 MP4 메타데이터 분석
 import json
 import logging
 import subprocess
@@ -7,16 +8,17 @@ from pathlib import Path
 
 from app.schemas.video import VideoMetadata
 
-# FFprobe 메타데이터 파싱, subprocess 실행
 logger = logging.getLogger(__name__)
 
 
+# 영상 처리 오류의 HTTP 상태 코드와 메시지
 class VideoError(Exception):
     def __init__(self, status_code: int, detail: str) -> None:
         super().__init__(detail)
         self.status_code = status_code
 
 
+# 실행 경로와 제한 시간을 적용해 미디어 도구 실행
 def run_media(
     tool: str, arguments: list[str], *, timeout: int, invalid_upload: bool = False
 ) -> str:
@@ -32,6 +34,7 @@ def run_media(
             timeout=timeout,
             check=True,
         )
+    # 실행 불가·시간 초과·처리 실패를 API 오류로 변환
     except OSError as exc:
         logger.exception("Could not start %s", tool)
         raise VideoError(503, f"{tool} is unavailable.") from exc
@@ -46,10 +49,12 @@ def run_media(
     return result.stdout
 
 
+# 입력 형식을 MOV 계열로 고정하고 로컬 파일만 허용
 def mp4_input(path: Path) -> list[str]:
     return ["-protocol_whitelist", "file", "-f", "mov", "-i", str(path)]
 
 
+# FFprobe JSON 응답에서 MP4 형식과 영상·음성 스트림 정보 확인
 def probe_video(path: Path) -> VideoMetadata:
     output = run_media(
         "ffprobe",
@@ -70,12 +75,14 @@ def probe_video(path: Path) -> VideoMetadata:
         brand = container["tags"]["major_brand"].strip().lower()
         if not brand or brand.startswith(("qt", "3gp", "3g2", "mj2")):
             raise ValueError("Unsupported MP4 brand")
+        # 첨부 이미지를 제외한 첫 영상 스트림 선택
         streams = data["streams"]
         video = next(
             stream for stream in streams
             if stream.get("codec_type") == "video"
             and not stream.get("disposition", {}).get("attached_pic")
         )
+        # 평균 프레임률이 없거나 유효하지 않으면 기본 프레임률 사용
         rate = video.get("avg_frame_rate")
         if rate in (None, "0/0", "0/1", "N/A"):
             rate = video["r_frame_rate"]
