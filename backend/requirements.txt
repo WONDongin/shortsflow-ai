@@ -3,6 +3,7 @@ fastapi>=0.115,<1
 faster-whisper>=1.2,<2
 # faster-whisper 1.2.1 uses the metadata_errors argument removed in PyAV 19.
 av>=11,<19
+httpx>=0.28,<1
 psycopg[binary]>=3.2,<4
 python-dotenv>=1,<2
 python-multipart>=0.0.26,<1

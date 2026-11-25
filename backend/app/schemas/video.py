@@ -29,6 +29,18 @@ class ExtractionResult(BaseModel):
     path: str
 
 
+class ShortsResult(BaseModel):
+    video_id: UUID
+    analysis_id: UUID
+    start_seconds: float
+    end_seconds: float
+    duration_seconds: float
+    thumbnail_timestamp_seconds: float
+    thumbnail_text: str
+    shorts_path: str
+    thumbnail_path: str
+
+
 class TranscriptSegment(BaseModel):
     start_seconds: float = Field(ge=0, allow_inf_nan=False)
     end_seconds: float = Field(gt=0, allow_inf_nan=False)

@@ -1,7 +1,7 @@
 <!-- 로컬 실행, 환경 설정, 영상 API, PostgreSQL 검증 -->
 # ShortsFlow AI
 
-AI 기반 숏폼 영상 편집 및 워크플로우 자동화. MP4에서 WAV 음성과 JPG 프레임을 추출하고, 로컬 Whisper로 시간 구간이 포함된 자막 JSON을 생성할 수 있습니다.
+AI 기반 숏폼 영상 편집 및 워크플로우 자동화. MP4에서 WAV 음성과 JPG 프레임을 추출하고, 로컬 Whisper 자막을 생성한 뒤 GPT로 쇼츠 후보를 최대 한 개 선정할 수 있습니다.
 
 <!-- 백엔드·프론트엔드 실행 -->
 ## 로컬 실행
@@ -69,8 +69,12 @@ Swagger UI(`http://127.0.0.1:8000/docs`)에서 **videos → POST /api/videos →
 | `POST /api/videos/{video_id}/extract-audio` | 작업 UUID | `200`, 16kHz 모노 PCM 16비트 WAV 경로 |
 | `POST /api/videos/{video_id}/transcribe` | 작업 UUID, 추출된 WAV 필요 | `200`, 생성한 자막과 감지 언어 |
 | `GET /api/videos/{video_id}/transcript` | 작업 UUID | `200`, 저장된 자막. 영상이나 자막이 없으면 `404` |
+| `POST /api/videos/{video_id}/analyze` | 작업 UUID | `202`, 새 분석 또는 진행 중인 분석 |
+| `GET /api/videos/{video_id}/analysis` | 작업 UUID, 선택 쿼리 `analysis_id` | `200`, 지정한 분석 또는 최신 분석의 상태와 결과. 없으면 `404` |
 | `POST /api/videos/{video_id}/extract-frame` | 작업 UUID, 선택 쿼리 `timestamp_seconds`(기본값 0) | `200`, 해당 시간에서 추출한 JPG 경로 |
-| `GET /api/videos/{video_id}/download/{kind}` | 작업 UUID와 파일 종류 `source`, `audio`, `frame`, `transcript` | `200`, MP4·WAV·JPG·JSON 파일. 파일이 없으면 `404` |
+| `POST /api/videos/{video_id}/generate-shorts` | 작업 UUID와 쿼리 `analysis_id` | `200`, 음성과 화면 자막이 포함된 쇼츠 및 썸네일 생성 결과 |
+| `GET /api/videos/{video_id}/shorts` | 작업 UUID와 쿼리 `analysis_id` | `200`, 생성된 두 파일의 경로와 원본 기준 타임스탬프 |
+| `GET /api/videos/{video_id}/download/{kind}` | 작업 UUID와 파일 종류 `source`, `audio`, `frame`, `transcript`, `shorts`, `thumbnail`. 마지막 두 종류는 쿼리 `analysis_id` 필요 | `200`, MP4·WAV·JPG·JSON 파일. 파일이 없으면 `404` |
 
 ```powershell
 $api = 'http://127.0.0.1:8000/api/videos'
@@ -116,7 +120,78 @@ Invoke-RestMethod -Uri $job | ConvertTo-Json -Depth 4
 }
 ```
 
-GPT 구간 추천은 10단계, SRT 변환과 영상에 자막 입히기는 11단계에서 진행합니다.
+### 10단계 GPT 콘텐츠 분석
+
+기존 PostgreSQL 영상 테이블이 준비된 상태에서 `backend` 디렉터리의 PowerShell로 마이그레이션을 적용합니다. 같은 마이그레이션을 다시 실행할 수 있습니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+@'
+from pathlib import Path
+from app.db import get_engine
+
+sql = Path("sql/010_video_analyses.sql").read_text(encoding="utf-8")
+with get_engine().begin() as connection:
+    connection.exec_driver_sql(sql)
+'@ | .\.venv\Scripts\python.exe -
+```
+
+실제 GPT 분석을 사용하려면 `backend/.env`에서 `ANALYSIS_MOCK_MODE=false`로 설정하고, `backend/.env` 또는 서버 프로세스 환경변수에 `OPENAI_API_KEY`를 지정합니다. `OPENAI_MODEL`의 기본값은 `gpt-5.4-mini`입니다. 키와 모델은 프로세스 환경변수가 `.env`보다 우선합니다. 모델을 변경할 때는 Responses API의 Structured Outputs를 지원하는 모델을 선택합니다. [OpenAI Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses)
+
+1. [Swagger](http://127.0.0.1:8000/docs)의 `GET /api/videos/{video_id}/transcript`에서 자막이 저장된 영상의 UUID와 구간 시간을 확인합니다.
+2. `POST /api/videos/{video_id}/analyze`에 같은 `video_id`를 넣고 실행합니다. HTTP `202`의 `analysis_id`를 복사합니다. 진행 중에 다시 요청하면 같은 `analysis_id`가 반환됩니다.
+3. `GET /api/videos/{video_id}/analysis`에 `video_id`와 `analysis_id`를 넣고 실행합니다. `queued` 또는 `running`이면 다시 조회합니다. `analysis_id`를 생략하면 해당 영상의 최신 분석을 조회합니다.
+4. `succeeded` 응답의 `candidate.start_seconds`와 `candidate.end_seconds`를 각각 첫 구간의 시작과 마지막 구간의 종료에 대조합니다. 기존 자막에 ID가 없으면 배열 순서대로 1부터 부여하며, 자막 파일은 분석 중 읽기만 합니다.
+
+일반 영상은 15~30초 구간을 허용합니다. 원본이 30초 미만이면 원본 범위 내의 양수 길이도 허용합니다. HTTP `200` 조회에서 적합한 구간이 없으면 `status: "no_candidate"`와 `candidate: null`이 반환됩니다. `failed`일 때는 `error.code`와 `error.message`에서 원인을 확인할 수 있습니다.
+
+| 오류 코드 | 원인 |
+| --- | --- |
+| `transcript_not_ready` | 저장된 자막이 없음 |
+| `invalid_transcript` | 자막 JSON, 영상 UUID 또는 기존 구간 ID가 잘못됨 |
+| `input_too_long` | 정리된 자막 입력이 100,000 UTF-8 바이트 또는 모델 입력 한도를 초과함 |
+| `api_error` | API 키 누락, API 요청 실패, 거절 또는 잘못된 응답 |
+| `invalid_segment` | 모델이 선택한 ID, 순서, 영상 범위 또는 길이가 잘못됨 |
+| `interrupted` | 대기 또는 실행 상태가 10분 이상 지속됨. 다음 조회나 요청에서 실패로 기록되며 새 분석을 요청할 수 있음 |
+| `internal_error` | 백엔드 분석 처리 중 예상 밖의 오류 발생 |
+
+성공 응답의 후보 예시는 다음과 같습니다.
+
+```json
+{
+  "start_segment_id": 1,
+  "end_segment_id": 3,
+  "start_seconds": 0.021995,
+  "end_seconds": 22.021995,
+  "title": "사랑한다는 말보다 먼저 나오는 말",
+  "thumbnail_text": "하루 종일 보고 싶다",
+  "reason": "궁금증을 여는 첫 문장에 이어 어떤 말인지 답이 나온다."
+}
+```
+
+API 키 없이 검증하려면 마이그레이션을 적용한 로컬 테스트 DB에 연결하고 `backend`에서 아래 명령을 실행합니다. 테스트는 OpenAI 응답을 모의하고 FastAPI 경로와 PostgreSQL 저장·조회를 실제로 실행합니다. 테스트 영상 행은 종료 시 정리됩니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+### 10단계 Mock 분석과 11단계 쇼츠 생성
+
+`backend/.env`에서 `ANALYSIS_MOCK_MODE=true`로 설정합니다. 항목을 생략해도 기본값은 `true`입니다. 이미 실행 중인 백엔드는 새 분석을 처리할 때 이 값을 다시 읽습니다.
+
+```powershell
+Set-Location backend
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Mock 모드는 예제 자막의 두 연속 구간을 찾고 기존 분석 테이블에 후보를 저장합니다. 구간이 일치하지 않으면 `no_candidate`를 반환합니다. 실제 분석 모드로 전환하려면 `backend/.env`에서 `ANALYSIS_MOCK_MODE=false`로 바꾼 뒤 새 분석을 요청합니다.
+
+1. [Swagger](http://127.0.0.1:8000/docs)에서 `POST /api/videos/{video_id}/analyze`에 `72082fdb-be4c-4843-b36a-3ee569f9a8f4`를 입력합니다.
+2. `GET /api/videos/{video_id}/analysis`에서 같은 영상 UUID와 새 `analysis_id`로 조회합니다. `succeeded`와 구간 `22.021995`~`41.521995`초를 확인합니다.
+3. `POST /api/videos/{video_id}/generate-shorts`에 두 UUID를 입력합니다. `duration_seconds`는 `19.5`, `thumbnail_timestamp_seconds`는 `25.021995`입니다. 3초 이하 후보는 썸네일에 구간의 중간 프레임을 씁니다.
+4. `GET /api/videos/{video_id}/shorts`에서 두 파일을 조회합니다. `GET /api/videos/{video_id}/download/{kind}`를 같은 UUID들로 두 번 실행합니다. `kind`는 각각 `shorts`와 `thumbnail`입니다.
+
+FFmpeg에는 `libx264` 인코더와 `drawtext` 필터가 필요합니다. 쇼츠에는 09단계 자막 중 선택 구간과 겹치는 부분을 클립 시작 기준으로 맞춰 영상에 직접 입힙니다. Windows에서는 맑은 고딕 Bold를 사용합니다. 다른 한글 글꼴을 쓰려면 서버 실행 전에 `THUMBNAIL_FONT_PATH`에 글꼴 파일 경로를 지정합니다. 자막이 들어간 새 결과는 영상별로 `shorts/<analysis_id>/captioned/` 아래에 저장됩니다. 이전에 생성한 결과도 같은 분석 ID로 3번을 다시 실행하면 자막 버전을 다운로드할 수 있습니다.
 
 <!-- 영상 처리 테스트와 DBeaver 저장 확인 -->
 ### 로컬에서 영상 연동 확인
