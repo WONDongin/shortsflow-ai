@@ -1,8 +1,9 @@
+# 영상 메타데이터와 API 응답 구조
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-# Pydantic 응답 모델
+# 영상 길이, 해상도, 프레임률, 코덱, 음성 트랙 정보 검증
 class VideoMetadata(BaseModel):
     duration_seconds: float = Field(gt=0, allow_inf_nan=False)
     width: int = Field(gt=0)
@@ -12,6 +13,7 @@ class VideoMetadata(BaseModel):
     has_audio: bool
 
 
+# 업로드·조회 응답에 사용할 UUID, 용량, 메타데이터, 결과물 경로
 class VideoResult(BaseModel):
     video_id: UUID
     size_bytes: int
@@ -20,6 +22,7 @@ class VideoResult(BaseModel):
     frame_path: str | None = None
 
 
+# 추출 응답에 사용할 영상 UUID와 결과물 상대 경로
 class ExtractionResult(BaseModel):
     video_id: UUID
     path: str

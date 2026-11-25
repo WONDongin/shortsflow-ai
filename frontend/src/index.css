@@ -1,3 +1,4 @@
+/* 영상 작업 화면 공통 스타일 */
 :root {
   font-family: system-ui, sans-serif;
   color: #13242c;
@@ -8,8 +9,60 @@ body {
   margin: 0;
 }
 
+/* 본문 너비와 여백 */
 main {
   max-width: 44rem;
-  margin: 12vh auto;
+  margin: 3rem auto;
   padding: 0 1.5rem;
 }
+
+/* 영상 열기·영상 정보 카드 */
+section {
+  margin-block: 1.5rem;
+  padding: 1.25rem;
+  border: 1px solid #cad8dc;
+  border-radius: .75rem;
+  background: #fff;
+}
+
+section h2:first-child {
+  margin-top: 0;
+}
+
+/* 화면 너비에 맞춰 입력 요소와 버튼 줄바꿈 */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  align-items: center;
+  margin-block: .4rem 1rem;
+}
+
+/* 입력 요소와 버튼의 공통 크기·테두리 */
+input, button {
+  font: inherit;
+  max-width: 100%;
+}
+
+input[type="text"], input[type="number"], button {
+  box-sizing: border-box;
+  padding: .45rem .65rem;
+  border: 1px solid #718990;
+  border-radius: .35rem;
+}
+
+input[type="text"] { width: 25rem; }
+input[type="number"] { width: 8rem; }
+button { background: #e5f1f3; color: inherit; }
+button:disabled { opacity: .55; }
+
+/* 영상 정보 두 열 배치 및 긴 UUID 줄바꿈 */
+dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: .35rem 1rem;
+}
+
+dd { margin: 0; overflow-wrap: anywhere; }
+/* 오류 메시지 색상 */
+[role="alert"] { color: #9a2434; }
